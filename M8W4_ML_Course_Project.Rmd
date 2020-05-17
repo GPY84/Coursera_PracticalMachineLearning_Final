@@ -1,0 +1,191 @@
+---
+title: "M8W4 - Practical Machine Learning - Course Project"
+author: "Thomas Goeppert"
+date: "16 5 2020"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Background
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://web.archive.org/web/20161224072740/http:/groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset).
+
+## Libraries
+
+```{r, message = FALSE, warning = FALSE}
+
+library(readr)
+library(dplyr)
+library(tidyverse)
+library(caret)
+library(rpart)
+library(rattle)
+library(corrplot)
+library(rpart)
+library(rpart.plot)
+
+```
+
+## Loading & prepare Data
+
+```{r}
+
+# Read Data
+
+
+pml_training <- read.csv('C:/temp/Coursera/M8W4/pml-training.csv', header=T)
+
+pml_valid <- read.csv('C:/temp/Coursera/M8W4/pml-testing.csv', header=T)
+
+str(pml_training)
+
+# Delete Index Row & TimeStamp
+
+pml_training <- pml_training[,-c(1,3,4,5)]
+
+# Create Training and Testing Partition
+
+set.seed(271184)
+index_Part <- as.vector(createDataPartition(pml_training$classe, p = .8, list = FALSE))
+                      
+head(index_Part)
+
+pml_training <- pml_training[index_Part,]
+
+pml_testing <- pml_training[-index_Part,]
+
+# Delete Data with almost no variance
+
+delete_NZV <- nearZeroVar(pml_training)
+
+pml_training <- pml_training[,-delete_NZV]
+
+# #DIV/0 ersetzen druch NA
+
+pml_training[pml_training=="#DIV/0!"] <- NA
+
+# Delete column when more than 30 % are NA
+
+delete_NA <- c()
+
+for(i in 1:length(pml_training)){
+  if (sum(is.na(pml_training[,i])) /  length(pml_training[,i]) >= 0.3){
+      delete_NA <- c(delete_NA, i)
+    }
+}
+
+pml_training <- pml_training[,-delete_NA]
+
+
+```
+
+## EDA for Training Data
+
+```{r}
+ 
+
+
+# Filter numeric values
+
+num <- c()
+
+for(i in 1:length(pml_training)){
+  
+    if (is.numeric(pml_training[,i])){
+      num <- c(num, i)
+    }
+}
+
+pml_training_Numeric <- pml_training[,num]
+
+# Check and visualize the correlation
+
+corr <-cor(pml_training_Numeric)
+
+corrplot(corr, order = "FPC", method = "color", type = "upper", 
+         tl.cex = 0.6, tl.col = "black")
+
+```
+
+## Train different Models and check which fits best
+
+```{r}
+ 
+# Decission Tree
+
+set.seed(271184)
+
+model_DT <- rpart(classe ~ ., data=pml_training)
+
+rpart.plot(model_DT)
+
+predict_DT <- predict(model_DT, pml_testing, type = "class", verbose = FALSE)
+
+C_Matrix <- confusionMatrix(predict_DT, pml_testing$classe)
+
+C_Matrix$overall[1]
+
+# Accuray quite OK lets check the others
+# more Details attached
+
+C_Matrix
+
+# Random Forest
+
+set.seed(271184)
+
+
+control_RF <- trainControl(method="cv", number=2)
+
+model_RF <- train(classe ~ ., data=pml_training, method="rf", verbose = FALSE)
+
+predict_RF <- predict(model_RF, pml_testing)
+
+C_Matrix <- confusionMatrix(predict_RF, pml_testing$classe)
+
+C_Matrix$overall[1]
+
+# Accuray of 1!, there might be some overfitting
+# more details attached
+
+C_Matrix
+
+
+# G. Boosted Reg. Model
+
+set.seed(271184)
+
+control_GBM <- trainControl(method = "repeatedcv", number = 2, repeats = 1)
+
+model_GBM <- train(classe ~ ., data=pml_training, method="gbm", trControl = control_GBM, verbose = FALSE)
+
+predict_GBM <- predict(model_GBM, pml_testing)
+
+C_Matrix <- confusionMatrix(predict_GBM, pml_testing$classe)
+
+C_Matrix$overall[1]
+
+# Accuray is quite high but not as goog as RF
+# more details attached
+
+C_Matrix
+
+```
+
+# Choose Model and Predict the Data
+
+```{r}
+# Choose RF to predict as it hast the highest accuracy
+
+predict_DT <- predict(model_RF, pml_valid, verbose = FALSE)
+
+# My prediction is
+
+predict_DT
+
+```
